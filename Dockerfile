@@ -16,8 +16,11 @@ RUN if ! id -u vncuser > /dev/null 2>&1; then \
     chown -R vncuser:vncuser /home/vncuser
 
 # 创建必要的目录并设置权限
+# [FIX] 关键修复：除了 chmod 777，必须使用 chown 将 /data 所有权给 vncuser
+# 这样脚本里的 rm -rf /data 才能成功清理目录内的文件（虽然删除 /data 本身仍会报错，但不影响流程）
 RUN mkdir -p /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle && \
-    chmod -R 777 /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle
+    chmod -R 777 /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle && \
+    chown -R vncuser:vncuser /data /tmp/app /.kaggle
 
 # 安装必要依赖
 # 注意：如果 COPY / / 破坏了 apk 的源配置，这里可能会失败。
@@ -54,8 +57,7 @@ RUN apk update && \
     py3-psutil
 
 # 设置工作目录
-WORKDIR /data
-
+WORKDIR /home/vncuser
 # 直接使用系统Python环境安装包
 RUN pip3 install --upgrade pip --break-system-packages && \
     pip3 install --no-cache-dir --break-system-packages \
@@ -82,6 +84,7 @@ RUN wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/ff.sh" "https:/
     wget -t 3 --retry-connrefused --timeout=30 -O "/server-ff.sh" "https://huggingface.co/datasets/Qilan2/ff/raw/main/server-ff.sh" && \
     chmod 777 /home/vncuser/ff.sh /server-ff.sh
 
+RUN touch /data/config.yaml && chown vncuser:vncuser /data/config.yaml
 # 切换到 vncuser
 USER vncuser
 
