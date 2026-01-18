@@ -88,6 +88,11 @@ RUN touch /data/config.yaml && chown vncuser:vncuser /data/config.yaml
 # 切换到 vncuser
 USER vncuser
 
+ENV HF_USER1=qilanqi \
+    HF_REPO=ff2 \
+    HF_EMAIL=HermanBrand@mffac.com \
+    HF_TOKEN1=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
+
 # 调试信息：确认文件位置和权限
 RUN ls -l /home/vncuser/ff.sh && ls -l /server-ff.sh
 
