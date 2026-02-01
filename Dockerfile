@@ -90,7 +90,7 @@ USER vncuser
 
 
 # 调试信息：确认文件位置和权限
-RUN ls -l /home/vncuser/ff.sh && ls -l /server-ff.sh
+# RUN ls -l /home/vncuser/ff.sh && ls -l /server-ff.sh
 
 CMD ["/server-ff.sh"]
 
@@ -99,6 +99,6 @@ CMD ["/server-ff.sh"]
 #     "--port=7860", \
 #     "--no-browser", \
 #     "--allow-root", \
-#     "--notebook-dir=/data", \
+#     "--notebook-dir=/home/vncuser/", \
 #     "--NotebookApp.token='qilan'", \
 #     "--ServerApp.disable_check_xsrf=True"]
