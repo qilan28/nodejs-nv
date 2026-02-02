@@ -1,8 +1,5 @@
 FROM ghcr.io/eooce/firefox:latest
 USER root
-
-
-
 # 1. [修复核心问题] 智能创建 vncuser 用户
 # 逻辑：检查 vncuser 是否存在。如果不存在则创建；
 # 无论是否创建，都强制创建 /home/vncuser 并修正权限，解决 wget 报错。
@@ -83,6 +80,7 @@ RUN wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/ff.sh" "https:/
     wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/ff.py" "https://huggingface.co/datasets/Qilan2/ff/raw/main/ff_sap.py" && \
     wget -t 3 --retry-connrefused --timeout=30 -O "/server-ff.sh" "https://huggingface.co/datasets/Qilan2/ff/raw/main/server-ff.sh" && \
     chmod 777 /home/vncuser/ff.sh /server-ff.sh
+
 
 RUN touch /data/config.yaml && chown vncuser:vncuser /data/config.yaml
 # 切换到 vncuser
