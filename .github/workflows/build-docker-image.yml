@@ -45,4 +45,5 @@ jobs:
             org.opencontainers.image.description=HTTP Server
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
+          no-cache: true  # 添加这行：禁用缓存
           cache-to: type=gha,mode=max
