@@ -1,30 +1,72 @@
-FROM ghcr.io/eooce/firefox:latest
+FROM alpine:latest
+
 USER root
 
+ENV CPU_CORES=8
+ENV MEMORY=32Gi
 
+# 1. 安装 NGINX 编译所需的依赖
+RUN apk update && \
+    apk add --no-cache \
+    wget \
+    gcc \
+    g++ \
+    make \
+    pcre-dev \
+    openssl-dev \
+    zlib-dev \
+    linux-headers
 
-# 1. [修复核心问题] 智能创建 vncuser 用户
-# 逻辑：检查 vncuser 是否存在。如果不存在则创建；
-# 无论是否创建，都强制创建 /home/vncuser 并修正权限，解决 wget 报错。
-RUN if ! id -u vncuser > /dev/null 2>&1; then \
-        adduser -D -u 1000 vncuser; \
-        echo "Created vncuser"; \
-    else \
-        echo "User vncuser already exists, skipping creation"; \
-    fi && \
-    mkdir -p /home/vncuser && \
-    chown -R vncuser:vncuser /home/vncuser
+# 2. 下载并解压 NGINX 源码
+RUN mkdir -p /data/tools && \
+    wget -P /data/tools/ http://nginx.org/download/nginx-1.24.0.tar.gz && \
+    tar -xf /data/tools/nginx-1.24.0.tar.gz -C /data/tools/
 
-# 创建必要的目录并设置权限
-# [FIX] 关键修复：除了 chmod 777，必须使用 chown 将 /data 所有权给 vncuser
-# 这样脚本里的 rm -rf /data 才能成功清理目录内的文件（虽然删除 /data 本身仍会报错，但不影响流程）
-RUN mkdir -p /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle && \
-    chmod -R 777 /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle && \
-    chown -R vncuser:vncuser /data /tmp/app /.kaggle
+# 3. 编译和安装 NGINX
+# 修复说明: 添加了 --with-cc-opt="-Wno-error" 以解决 GCC 编译报错
+RUN cd /data/tools/nginx-1.24.0 && \
+    ./configure --prefix=/data/nginx1.24 \
+            --with-http_ssl_module \
+            --with-http_v2_module \
+            --with-http_stub_status_module \
+            --with-threads \
+            --with-file-aio \
+            --with-cc-opt="-Wno-error" \
+            --error-log-path=/data/nginx1.24/logs/error.log \
+            --http-log-path=/data/nginx1.24/logs/access.log \
+            --pid-path=/data/nginx1.24/nginx.pid \
+            --http-client-body-temp-path=/data/nginx1.24/client_body_temp \
+            --http-proxy-temp-path=/data/nginx1.24/proxy_temp \
+            --http-fastcgi-temp-path=/data/nginx1.24/fastcgi_temp \
+            --http-uwsgi-temp-path=/data/nginx1.24/uwsgi_temp \
+            --http-scgi-temp-path=/data/nginx1.24/scgi_temp && \
+    make && \
+    make install
 
-# 安装必要依赖
-# 注意：如果 COPY / / 破坏了 apk 的源配置，这里可能会失败。
-# 假设源环境兼容，继续执行安装。
+# 4. 设置权限
+RUN chmod -R 777 /data/nginx1.24 && \
+    chown -R nobody:nobody /data/nginx1.24
+
+# 5. 创建基本的 nginx.conf 配置文件
+# 修复说明: 修正了最后几行的文件名 (原为 conf/nginx) 并补全了缺少的闭合括号 "}"
+RUN echo "user nobody nobody;" > /data/nginx1.24/conf/nginx.conf && \
+    echo "worker_processes auto;" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "error_log /data/nginx1.24/logs/error.log;" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "pid /data/nginx1.24/nginx.pid;" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "events {" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "    worker_connections 1024;" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "}" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "http {" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "    include mime.types;" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "    default_type application/octet-stream;" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "    server {" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "        listen 80;" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "    }" >> /data/nginx1.24/conf/nginx.conf && \
+    echo "}" >> /data/nginx1.24/conf/nginx.conf
+
+# 6. 安装 Python 环境及其他工具依赖
 RUN apk update && \
     apk add --no-cache \
     ca-certificates \
@@ -52,54 +94,64 @@ RUN apk update && \
     py3-requests \
     py3-flask \
     py3-pexpect \
-    tini \
-    procps \
     py3-psutil
 
-# 设置工作目录
-WORKDIR /home/vncuser
-# 直接使用系统Python环境安装包
-RUN pip3 install --upgrade pip --break-system-packages && \
-    pip3 install --no-cache-dir --break-system-packages \
-        jupyterlab \
-        notebook \
-        pexpect \
-        psutil \
-        requests \
-        pytz \
-        flask \
-        kaggle \
-        PyYAML \
-        huggingface_hub \
-        gradio \
-        websockify \
-        ipykernel && \
-    pip3 install --upgrade huggingface_hub --break-system-packages
+# 7. 创建工作目录和权限
+RUN mkdir -p /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle && \
+    chmod -R 777 /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle
 
-# 下载文件
-# 此时 /home/vncuser 已经确保存由上面的 RUN 指令处理好，不会报错
-RUN wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/ff.sh" "https://huggingface.co/datasets/Qilan2/ff/raw/main/ff.sh" && \
-    wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/bf.py" "https://huggingface.co/datasets/Qilan2/ff/raw/main/bf.py" && \
-    wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/ff.py" "https://huggingface.co/datasets/Qilan2/ff/raw/main/ff_sap.py" && \
-    chmod 777 /home/vncuser/ff.sh
+# 8. 设置工作目录
+WORKDIR /data
 
-COPY server-ff.sh /server-ff.sh
-RUN chmod 777 /server-ff.sh
-RUN touch /data/config.yaml && chown vncuser:vncuser /data/config.yaml
-# 切换到 vncuser
-USER vncuser
+# 9. 创建虚拟环境并安装 Python 包
+RUN python3 -m venv /opt/venv && \
+    . /opt/venv/bin/activate && \
+    pip install --upgrade pip && \
+    pip install --no-cache-dir \
+    jupyterlab \
+    notebook \
+    pexpect \
+    psutil \
+    requests \
+    pytz \
+    flask \
+    kaggle \
+    PyYAML \
+    huggingface_hub \
+    ipykernel
 
+# 10. 安装 configurable-http-proxy
+RUN npm install -g configurable-http-proxy
 
-# 调试信息：确认文件位置和权限
-# RUN ls -l /home/vncuser/ff.sh && ls -l /server-ff.sh
+# 11. 配置 sudo
+RUN echo "root ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    chmod 0440 /etc/sudoers
 
-CMD ["/server-ff.sh"]
+# 12. 设置环境变量
+ENV JUPYTER_RUNTIME_DIR=/tmp/app/runtime
+ENV JUPYTER_DATA_DIR=/tmp/app/data
+ENV HOME=/tmp/app
+ENV PATH="/opt/venv/bin:$PATH"
+ENV JUPYTER_TOKEN=${JUPYTER_TOKEN}
+
+# 13. 创建运行时目录
+RUN mkdir -p /tmp/app/runtime && \
+    chmod 777 /tmp/app/runtime
+
+# 14. 暴露端口及启动脚本
+EXPOSE 7860
+
+RUN wget -O '/data/start_server.sh' 'https://huggingface.co/datasets/Qilan2/ff/raw/main/nv1/start_server.sh' && \
+    wget -O '/data/app.py' 'https://huggingface.co/datasets/Qilan2/ff/raw/main/nv1/app.py' && \
+    chmod +x /data/start_server.sh
+
+CMD ["/data/start_server.sh"]
 
 # CMD ["jupyter", "lab", \
 #     "--ip=0.0.0.0", \
 #     "--port=7860", \
 #     "--no-browser", \
 #     "--allow-root", \
-#     "--notebook-dir=/home/vncuser/", \
+#     "--notebook-dir=/data", \
 #     "--NotebookApp.token='qilan'", \
 #     "--ServerApp.disable_check_xsrf=True"]
