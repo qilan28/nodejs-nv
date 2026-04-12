@@ -39,11 +39,11 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ghcr.io/${{ github.repository_owner }}/nv2:latest
+            ghcr.io/${{ github.repository_owner }}/nv4:latest
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.description=HTTP Server
             org.opencontainers.image.licenses=MIT
           cache-from: type=gha
-          # no-cache: true  # 添加这行：禁用缓存
+          no-cache: true  # 添加这行：禁用缓存
           cache-to: type=gha,mode=max
