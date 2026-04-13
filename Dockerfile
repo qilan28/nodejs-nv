@@ -1,8 +1,6 @@
-# FROM ghcr.io/eooce/firefox:latest
-FROM qilan28/ff:v1.0
+# 强制指定为 amd64 架构，防止 QEMU 模拟器崩溃
+FROM --platform=linux/amd64 qilan28/ff:v1.0
 USER root
-
-
 
 # 1. [修复核心问题] 智能创建 vncuser 用户
 # 逻辑：检查 vncuser 是否存在。如果不存在则创建；
@@ -21,8 +19,6 @@ RUN mkdir -p /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle && \
     chmod -R 777 /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle
 
 # 安装必要依赖
-# 注意：如果 COPY / / 破坏了 apk 的源配置，这里可能会失败。
-# 假设源环境兼容，继续执行安装。
 RUN apk update && \
     apk add --no-cache \
     ca-certificates \
@@ -71,13 +67,11 @@ RUN pip3 install --upgrade pip --break-system-packages && \
         ipykernel && \
     pip3 install --upgrade huggingface_hub --break-system-packages
 
-# 7. 创建工作目录和权限
+# 7. 创建工作目录和权限 (确保权限正确)
 RUN mkdir -p /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle && \
     chmod -R 777 /tmp/app /tmp/app/frp /.kaggle /data /root/.kaggle
 
-
 # 下载文件
-# 此时 /home/vncuser 已经确保存由上面的 RUN 指令处理好，不会报错
 RUN wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/ff.sh" "https://huggingface.co/datasets/Qilan2/ff/raw/main/ff-jm.sh" && \
     wget -t 3 --retry-connrefused --timeout=30 -O "/data/bf.py" "https://huggingface.co/datasets/Qilan2/ff/raw/main/bf.py" && \
     wget -t 3 --retry-connrefused --timeout=30 -O "/data/ff.py" "https://huggingface.co/datasets/Qilan2/ff/raw/main/ff_sap.py" && \
@@ -88,6 +82,7 @@ RUN wget -t 3 --retry-connrefused --timeout=30 -O "/home/vncuser/ff.sh" "https:/
 
 # 设置工作目录
 WORKDIR /data
+
 # 切换到 vncuser
 USER vncuser
 
@@ -95,12 +90,3 @@ USER vncuser
 RUN ls -l /home/vncuser/ff.sh && ls -l /server-ff.sh
 
 CMD ["/server-ff.sh"]
-
-# CMD ["jupyter", "lab", \
-#     "--ip=0.0.0.0", \
-#     "--port=7860", \
-#     "--no-browser", \
-#     "--allow-root", \
-#     "--notebook-dir=/data", \
-#     "--NotebookApp.token='qilan'", \
-#     "--ServerApp.disable_check_xsrf=True"]
